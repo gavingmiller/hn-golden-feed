@@ -1,7 +1,7 @@
 hn-golden-feed
 ==============
 
-Ruby script to download latest 10 comments from a list of Hackers News users
+Ruby script to download latest 10 comments from a list of Hackers News users. [Example output](http://htmlpreview.github.io/?https://github.com/gavingmiller/hn-golden-feed/blob/master/golden.html).
 
 ## Usage:
 
