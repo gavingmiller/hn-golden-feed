@@ -1,0 +1,191 @@
+#!/usr/bin/env ruby
+
+require 'nokogiri'
+require 'open-uri'
+require 'pry'
+
+USERNAMES = %w{patio11 edw519 bdunn ahoyhere petercooper}
+# Debug
+#USERNAMES = %w{edw519}
+
+HN_URL = "http://news.ycombinator.com"
+NEWLINE = "<br />"
+STYLESHEET = <<EOS
+	<style>
+	body {
+	  background-color: #F6F6EF;
+	  color: #828282;
+	  font-family: Verdana;
+	  font-size: 10pt;
+	  margin-left: 30%;
+	}
+	a:link {
+	 color: #000000;
+	 text-decoration: none;
+	}
+	a:visited {
+	  color: #828282;
+	  text-decoration: none;
+	}
+	.comhead {
+	  color: #828282;
+	  font-family: Verdana;
+	  font-size: 8pt;
+	}
+	.comment_block {
+	  padding: 10px 0 0 10px;
+	  width: 800px;
+	}
+	div.comment {
+	  font-family: Verdana;
+	  font-size: 9pt;
+	  padding: 10px;
+	}
+	.comment a:link, .comment a:visited {
+	  text-decoration: underline;
+	}
+	.comhead a:link, .subtext a:visited {
+	  color: #828282;
+	}
+	.comhead a:hover {
+	  text-decoration: underline;
+	}
+	pre {
+	  max-width: 600px;
+	  overflow: auto;
+	  padding: 2px;
+	}
+	pre:hover {
+	  overflow: auto;
+	}
+	hr {
+	  width: 800px;
+	  margin-left: 0;
+	}
+	</style>
+EOS
+
+=begin
+* Aggregation Object
+    * Data
+		* List of usernames
+			* [patio11, edw519, bdunn, ahoyhere, petercooper]
+	* Behaviour
+		* Get Collection of Users
+		* to_s
+			* Prints anchors to each user
+			* Calls to_s on user collection
+=end
+class Aggregator
+  def initialize(usernames)
+    @usernames = usernames
+  end
+
+  def to_s
+<<EOM
+    <a name="top"></a>
+    #{@usernames.collect{ |u| "<a href=\"##{u}\">#{u}</a>" }.join(" :: ")}
+	#{NEWLINE}
+	#{get_users.join(NEWLINE)}
+EOM
+  end
+
+  private
+	def get_users
+	  @usernames.collect {|username| User.new(username) }
+	end
+end
+
+=begin
+* User Object
+    * Data
+        * username
+		* HTML document via url: https://news.ycombinator.com/threads?id={username}
+			* There's a page object here, but there isn't enough behaviour to make it worth while yet
+	* Behaviour
+	    * Get Collection of Comments
+	    * to_s
+			* Prints <hr />
+			* Prints User w/ anchor
+			* Calls to_s on comment collection
+=end
+class User
+  def initialize(username)
+    @username = username
+    @doc      = Nokogiri::HTML(open("https://news.ycombinator.com/threads?id=#{@username}"))
+  end
+
+  def to_s
+<<EOM
+    <h1>
+	  <a name="#{@username}">#{@username}</a>
+	</h1>
+	<sub><a href="#top">top</a></sub>
+	<hr />
+    <div class="comment_block">
+	  #{get_comments.join(NEWLINE)}
+	</div>
+EOM
+  end
+
+  private
+  def get_comments
+    [].tap do |comments|
+	    get_comment_blocks.each do |comment_block|
+	      link     = make_absolute comment_block.css('a:nth-child(2)').to_s
+        parent   = make_absolute comment_block.css('a:nth-child(3)').to_s
+	      original = make_absolute comment_block.css('a:nth-child(4)').to_s
+	      text     = comment_block.css('.comment')
+
+        comments << Comment.new(link, parent, original, text) unless parent.empty?
+	    end
+	  end
+	end
+
+	def make_absolute(text)
+	  text.gsub("href=\"", "href=\"#{HN_URL}/")
+	end
+
+	# A comment_block is the entry for a HN comment. It includes the comment,
+	# username, timeframe, link to comment, parent link, and original link.
+	def get_comment_blocks
+	  @doc.css('.default')
+	end
+end
+
+=begin
+* Comment Object
+    * Data
+        * link => link to comment
+		* parent => link to parent content
+		* original => link to original content
+		* text => comment text
+	* Behaviour
+		* to_s
+			* Prints link, parent, original
+			* Prints text
+=end
+class Comment
+  def initialize(link, parent, original, text)
+    @link, @parent, @original, @text = clean(link), clean(parent), clean(original), clean(text)
+  end
+
+  def to_s
+<<EOM
+	<span class="comhead">
+	  #{@link} | #{@parent} | on: #{@original}
+    </span>
+	<div class="comment">
+	  #{@text}
+	</div>
+EOM
+  end
+
+  private
+  # Nievely clean 'weird' quotes like: ’
+  def clean(text)
+    text.to_s.gsub('&acirc;', "'").gsub(/&#1(28|47|53|56|58);/, '')
+  end
+end
+
+puts "<html><head>#{STYLESHEET}</head><body> #{Aggregator.new(USERNAMES).to_s}</body></html>"
